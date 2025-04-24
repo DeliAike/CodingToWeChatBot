@@ -1,7 +1,10 @@
+import time
 from datetime import datetime, timedelta
 
 import requests
 import json
+
+import schedule
 
 
 class CodingAPI:
@@ -69,7 +72,7 @@ class CodingAPI:
         return {item['Name']: item['Id'] for item in extracted_data}
 
     # 获取项目列表
-    def get_action_list(self, IssueType="DEFECT", start_date=None, end_date=None):
+    def get_action_list(self, IssueType="DEFECT", start_date=None, end_date=None, page=0, ASSIGNEE=None):
         """
         :param IssueType:事项类型
             ALL - 全部事项
@@ -84,12 +87,16 @@ class CodingAPI:
         payload = json.dumps({
             "ProjectName": "minguangxitong",
             "IssueType": IssueType,
-            "Offset": "0",
+            "Offset": page,
             "Limit": "10",
             "Conditions": [  # 将 conditions 转换为 JSON 字符串
+                {
+                    "Key": "ASSIGNEE",
+                    "Value": ASSIGNEE,    # 处理人ID
+                },
                 # {
                 #     "Key": "ASSIGNEE",
-                #     "Value": "9238399",    # 处理人ID
+                #     "Value": "9238401",  # 处理人ID
                 # },
                 # {
                 #     "Key": "CREATOR",
@@ -140,10 +147,10 @@ class CodingAPI:
 
         # 优先级映射表（根据Coding平台定义调整）
         priority_map = {
-            "1": "🔥紧急",
+            "3": "🔥紧急",
             "2": "⚠️高",
-            "3": "⚡中",
-            "4": "🌿低"
+            "1": "⚡中",
+            "0": "🌿低"
         }
 
         for issue in json_data.get("Response", {}).get("IssueList", []):
@@ -160,7 +167,7 @@ class CodingAPI:
                 "id": issue_code,
                 "link": f"{project_url}/issues/{issue_code}",
                 "title": issue.get("Name", "无标题缺陷"),
-                "priority": priority_map.get(issue.get("Priority", "4")),
+                "priority": priority_map.get(issue.get("Priority", "2")),
                 "assignee": assignees[0] if assignees else "未分配",
                 "status": issue.get("IssueStatusName", "未知状态"),
                 "days_pending": days_pending,
@@ -197,7 +204,7 @@ class CodingAPI:
         for issue in content:
             lines.append(
                 f"`{issue['priority']}` [{issue['id']} {issue['title']}]({issue['link']})\n"
-                f"▸ 负责人：@{issue['assignee']} | 滞留：{issue['days_pending']}天\n"
+                f"▸ {issue['status']} | @{issue['assignee']} | 滞留：{issue['days_pending']}天\n"
                 f"▸ 最后更新：{issue['last_updated']}\n"
                 # f"▸ 阻塞原因：{issue['blocker']}\n"
                 "------------------------"
@@ -210,29 +217,45 @@ class CodingAPI:
             }
         requests.post(webhook_url, json=data)
         return "\n".join(lines)
+    def main(self, team_members=None, last_week_nums = 1):
+        for i in range(0, 5):
+            all_issues = []
 
-    def main(self):
-        # 获取团队成员
-        team_members = self.get_team_members()
-
-        all_issues = []
-        for member_name, member_id in team_members.items():
-            last_week_start, last_week_end = self.get_last_week_dates(last_week_nums=1)
+            last_week_start, last_week_end = self.get_last_week_dates(last_week_nums= last_week_nums)
             # 获取指定时间内的缺陷列表
-            data = self.get_action_list(start_date=last_week_start, end_date=last_week_end)
-            processed_data = self.process_coding_data(data)
-
-            # 过滤出当前成员的缺陷
-            member_issues = [issue for issue in processed_data if issue['assignee'] == member_name]
-            all_issues.extend(member_issues)
-        print(all_issues)
-        # 发送到企业微信
-        self.send_to_wechat(all_issues)
+            data = self.get_action_list(start_date=last_week_start, end_date=last_week_end, page=i*10, ASSIGNEE=team_members)
+            if data['Response']['IssueList']:
+                processed_data = self.process_coding_data(data)
+                all_issues.extend(processed_data)
+                print(all_issues)
+                # 发送到企业微信
+                self.send_to_wechat(all_issues)
+            else:
+                break
     def test(self):
         last_week_start, last_week_end = self.get_last_week_dates(last_week_nums=0)
         print(f"上周开始日期: {last_week_start}")
         print(f"上周结束日期: {last_week_end}")
-if __name__ == '__main__':
-    coding = CodingAPI()
-    coding.main()
+    def run(self):
+        # 安排任务：每天 9:00 执行
+        schedule.every().day.at("9:00").do(self.main(team_members="9238401, 9238399, 9238313, 9238308", last_week_nums=0))
+        # 安排任务：每周一 8:50 执行
+        schedule.every().monday.at("08:50").do(self.main(team_members="9238401, 9238399, 9238313, 9238308", last_week_nums=2))
 
+        while True:
+            schedule.run_pending()  # 检查是否有任务需要运行
+            time.sleep(1)
+if __name__ == '__main__':
+    """
+    {'Rita': 9306046, 'Mariner': 9290487, '吴飞': 9281578, '施展福': 9264194, '赵芳平': 9238401, '李泽铠': 9238399, '徐浩': 9238388, '陈静': 9238313, '冯杰': 9238308, '周贤美': 9238297}
+    """
+    coding = CodingAPI()
+    # coding.test()
+    # last_week_start, last_week_end = coding.get_last_week_dates(last_week_nums=1)
+    # # 获取指定时间内的缺陷列表
+    # data = coding.get_action_list(start_date=last_week_start, end_date=last_week_end)
+    # print(data)
+    # processed_data = coding.get_team_members()
+    # print(processed_data)
+    # coding.main(team_members="9238401, 9238399, 9238313, 9238308")
+    coding.run()
