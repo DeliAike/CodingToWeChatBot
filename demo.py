@@ -236,11 +236,18 @@ class CodingAPI:
         last_week_start, last_week_end = self.get_last_week_dates(last_week_nums=0)
         print(f"上周开始日期: {last_week_start}")
         print(f"上周结束日期: {last_week_end}")
+
+    # 推送上周缺陷
+    def send_last_week(self):
+        self.main(team_members="9238401, 9238399, 9238313, 9238308", last_week_nums=1)
+    def send_this_week(self):
+        self.main(team_members="9238401, 9238399, 9238313, 9238308", last_week_nums=0)
+
     def run(self):
         # 安排任务：每天 9:00 执行
-        schedule.every().day.at("9:00").do(self.main(team_members="9238401, 9238399, 9238313, 9238308", last_week_nums=0))
+        schedule.every().day.at("09:00").do(self.send_last_week)
         # 安排任务：每周一 8:50 执行
-        schedule.every().monday.at("08:50").do(self.main(team_members="9238401, 9238399, 9238313, 9238308", last_week_nums=2))
+        schedule.every().monday.at("08:50").do(self.send_this_week)
 
         while True:
             schedule.run_pending()  # 检查是否有任务需要运行
@@ -258,4 +265,5 @@ if __name__ == '__main__':
     # processed_data = coding.get_team_members()
     # print(processed_data)
     # coding.main(team_members="9238401, 9238399, 9238313, 9238308")
+    print("kaishi")
     coding.run()
